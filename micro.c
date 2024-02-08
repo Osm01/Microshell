@@ -8,21 +8,9 @@ void print_error(const char *str)
 		write(2, &str[i++], 1);
 }
 
-void free_double_pointer(char **ptr)
-{
-	int i;
-
-	if (!ptr)
-		return;
-	i = -1;
-	while (ptr[++i])
-		free(ptr[i]);
-	free(ptr);
-}
-
 void cd(const char *path)
 {
-	if (!path)
+	if (!path || (!strcmp(path, ";")) || (!strcmp(path, "|")))
 		return (print_error("error: cd: bad arguments\n"));
 	if (chdir(path) == -1)
 	{
@@ -32,28 +20,7 @@ void cd(const char *path)
 	}
 }
 
-char *ft_strdup(const char *str)
-{
-	int i;
-	char *cp;
-
-	if (!str)
-		return (NULL);
-	i = -1;
-	while (str[++i])
-		;
-	;
-	cp = (char *)malloc(sizeof(char) * (i + 1));
-	if (!cp)
-		return (NULL);
-	i = -1;
-	while (str[++i])
-		cp[i] = str[i];
-	cp[i] = 0;
-	return (cp);
-}
-
-char **get_cmd(const char **argv, int *start)
+char **get_cmd(char *const *argv, int *start)
 {
 	char **cmd;
 	int i;
@@ -69,82 +36,80 @@ char **get_cmd(const char **argv, int *start)
 			break;
 		i++;
 	}
-	count = i - *start;
+	count = (i - *start);
 	if (count == 0)
 		return (NULL);
 	cmd = (char **)malloc(sizeof(char *) * (count + 1));
 	if (!cmd)
 		return (NULL);
-	i = *start;
 	index = 0;
-	while (argv[i])
-	{
-		if (!strcmp(argv[i], "|") || !strcmp(argv[i], ";"))
-			break;
-		cmd[index++] = ft_strdup(argv[i++]);
-	}
+	i = (*start);
+	while (index < count)
+		cmd[index++] = argv[i++];
 	cmd[index] = 0;
-	*start = i;
+	*start += index;
 	return (cmd);
 }
 
-void exe(char **cmd, int fd[2], int it_s_pipe, char *const *env)
+void exe(char **cmd, char *const *env, int it_s_pipe, int *read_fd)
 {
 	pid_t pid;
+	int fd[2];
 
+	if (pipe(fd) == -1)
+		return (print_error("error: fatal\n"));
 	pid = fork();
 	if (pid == -1)
 		return (print_error("error fatal\n"));
 	if (pid == 0)
 	{
 		close(fd[0]);
+		dup2(*read_fd, 0);
 		if (it_s_pipe == 1)
 			dup2(fd[1], 1);
-		if (execve(cmd[0], cmd, env) == -1)
-			return (print_error("EROOR"), exit(0));
 		close(fd[1]);
+		if (execve(cmd[0], cmd, env) == -1)
+			return (print_error("EROOR execute command"), print_error(cmd[0]), print_error("\n"), exit(0));
 	}
 	else
 	{
-		wait(NULL);
-		if (it_s_pipe == 1)
-			dup2(fd[0], 0);
 		close(fd[1]);
+		int status;
+		waitpid(-1, &status, 0);
+		if (*read_fd != 0)
+			close(*read_fd);
+		if (it_s_pipe)
+			*read_fd = dup(fd[0]);
+		close(fd[0]);
 	}
 }
 
-int main(int argc, const char **argv, char *const *env)
+int main(int argc, char *const *argv, char *const *env)
 {
 	char **cmd;
+	int read_fd;
 	int i;
-	int fd[2];
 
 	if (argc > 1)
 	{
-		if (pipe(fd) == -1)
-			return (print_error("error: fatal\n"), 0);
+		read_fd = 0;
 		i = 1;
 		while (i < argc)
 		{
 			cmd = NULL;
 			if (!strcmp(argv[i], "cd"))
-			{
-				i++;
-				cd(argv[i]);
-			}
+				cd(argv[++i]);
 			else
 			{
 				cmd = get_cmd(argv, &i);
 				if (argv[i] && !strcmp(argv[i], "|"))
-					exe(cmd, fd, 1, env);
+					exe(cmd, env, 1, &read_fd);
 				else
-					exe(cmd, fd, 0, env);
-				free_double_pointer(cmd);
+					exe(cmd, env, 0, &read_fd);
+				free(cmd);
 			}
 			i++;
 		}
-		close(fd[0]);
-		close(fd[1]);
 	}
 	return (0);
 }

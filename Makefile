@@ -1,7 +1,7 @@
 NAME = micro
 
 CXX = gcc
-CXXFLAGS = -Wall -Wextra -Werror #-fsanitize=address
+CXXFLAGS = -Wall -Wextra -Werror -fsanitize=address
 
 SRC = micro.c
 
